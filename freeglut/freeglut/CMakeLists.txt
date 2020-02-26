@@ -421,7 +421,12 @@ IF(WIN32)
     IF(FREEGLUT_BUILD_STATIC_LIBS)
         TARGET_COMPILE_DEFINITIONS(freeglut_static PUBLIC FREEGLUT_STATIC)
         IF(FREEGLUT_REPLACE_GLUT)
-            SET_TARGET_PROPERTIES(freeglut_static PROPERTIES OUTPUT_NAME ${LIBNAME})
+            # on MSVC static lib and import from shared lib have the same name
+            IF(MSVC AND FREEGLUT_BUILD_SHARED_LIBS)
+                SET_TARGET_PROPERTIES(freeglut_static PROPERTIES OUTPUT_NAME ${LIBNAME}_static)
+            ELSE()
+                SET_TARGET_PROPERTIES(freeglut_static PROPERTIES OUTPUT_NAME ${LIBNAME})
+            ENDIF()
         ENDIF()
         # need to set machine:x64 for linker, at least for VC10, and
         # doesn't hurt for older compilers:
