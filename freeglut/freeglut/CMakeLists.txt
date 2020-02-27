@@ -139,13 +139,13 @@ IF(WIN32)
         src/mswin/fg_state_mswin.c
         src/mswin/fg_structure_mswin.c
         src/mswin/fg_window_mswin.c
-        ${CMAKE_BINARY_DIR}/freeglut.rc # generated below from freeglut.rc.in
+        ${CMAKE_CURRENT_BINARY_DIR}/freeglut.rc # generated below from freeglut.rc.in
     )
     IF (MSVC AND NOT CMAKE_CL_64)
         # .def file only for 32bit Windows builds (TODO: MSVC only right
         # now, needed for any other Windows platform?)
         LIST(APPEND FREEGLUT_SRCS
-            ${CMAKE_BINARY_DIR}/freeglutdll.def # generated below from src/freeglutdll.def.in
+            ${CMAKE_CURRENT_BINARY_DIR}/freeglutdll.def # generated below from src/freeglutdll.def.in
         )
     ENDIF()
 
@@ -386,24 +386,39 @@ ENDIF()
 # The generated config.h is placed in the project's build directory, just to
 # ensure that all CMake-generated files are kept away from the main source tree.
 # As a result, the build directory must to be added to the include path list.
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in ${CMAKE_BINARY_DIR}/config.h)
-INCLUDE_DIRECTORIES(BEFORE ${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/src)
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 ADD_DEFINITIONS(-DHAVE_CONFIG_H)
 IF(WIN32)
     # we also have to generate freeglut.rc, which contains the version
     # number
-    CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/freeglut.rc.in ${CMAKE_BINARY_DIR}/freeglut.rc)
+    CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/freeglut.rc.in ${CMAKE_CURRENT_BINARY_DIR}/freeglut.rc)
     IF (MSVC AND NOT CMAKE_CL_64)
         # .def file only for 32bit Windows builds with Visual Studio
-        CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/src/freeglutdll.def.in ${CMAKE_BINARY_DIR}/freeglutdll.def)
+        CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/src/freeglutdll.def.in ${CMAKE_CURRENT_BINARY_DIR}/freeglutdll.def)
     ENDIF()
 ENDIF()
 
 IF(FREEGLUT_BUILD_SHARED_LIBS)
     ADD_LIBRARY(freeglut SHARED ${FREEGLUT_SRCS})
+    TARGET_INCLUDE_DIRECTORIES(freeglut
+        PRIVATE
+            "${CMAKE_CURRENT_BINARY_DIR}"
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
 ENDIF()
 IF(FREEGLUT_BUILD_STATIC_LIBS)
     ADD_LIBRARY(freeglut_static STATIC ${FREEGLUT_SRCS})
+    TARGET_INCLUDE_DIRECTORIES(freeglut_static
+        PRIVATE
+            "${CMAKE_CURRENT_BINARY_DIR}"
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
 ENDIF()
 
 
@@ -613,8 +628,8 @@ ENDIF()
 IF(FREEGLUT_BUILD_STATIC_LIBS)
   LIST(APPEND PC_CFLAGS -DFREEGLUT_STATIC)
 ENDIF()
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/freeglut.pc.in ${CMAKE_BINARY_DIR}/freeglut.pc @ONLY)
-INSTALL(FILES ${CMAKE_BINARY_DIR}/freeglut.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig/ RENAME ${PC_FILENAME} COMPONENT Devel)
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/freeglut.pc.in ${CMAKE_CURRENT_BINARY_DIR}/freeglut.pc @ONLY)
+INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/freeglut.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig/ RENAME ${PC_FILENAME} COMPONENT Devel)
 # TODO: change the library and .pc name when building for GLES,
 # e.g. -lglut-GLES
 
