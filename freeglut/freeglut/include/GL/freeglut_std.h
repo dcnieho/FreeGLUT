@@ -47,11 +47,7 @@
  * The default behavior depends on the compiler/platform.
  */
 #   ifndef FREEGLUT_LIB_PRAGMAS
-#       if ( defined(_MSC_VER) || defined(__WATCOMC__) ) && !defined(_WIN32_WCE)
-#           define FREEGLUT_LIB_PRAGMAS 1
-#       else
-#           define FREEGLUT_LIB_PRAGMAS 0
-#       endif
+#       define FREEGLUT_LIB_PRAGMAS 0
 #   endif
 
 #  ifndef WIN32_LEAN_AND_MEAN
