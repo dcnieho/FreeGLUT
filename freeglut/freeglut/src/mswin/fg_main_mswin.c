@@ -1111,10 +1111,23 @@ LRESULT CALLBACK fgPlatformWindowProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
     break;
 
     case WM_CLOSE:
-        fgDestroyWindow ( window );
-        if ( fgState.ActionOnWindowClose != GLUT_ACTION_CONTINUE_EXECUTION )
+    {
+        {
+            int doClose = GL_TRUE;
+
+            SFG_Window *activeWindow = fgStructure.CurrentWindow;
+            INVOKE_WCB(*window, BeforeClose, (&doClose));
+            fgSetWindow(activeWindow);
+
+            if (!doClose)
+                return TRUE;
+        }
+
+        fgDestroyWindow(window);
+        if (fgState.ActionOnWindowClose != GLUT_ACTION_CONTINUE_EXECUTION)
             PostQuitMessage(0);
-        break;
+    }
+    break;
 
     case WM_DESTROY:
         /*
@@ -1443,8 +1456,22 @@ LRESULT CALLBACK fgPlatformWindowProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
                 break ;
 
             case SC_CLOSE      :
+            {
                 /* Followed very closely by a WM_CLOSE message */
-                break ;
+
+                {
+                    int doClose = GL_TRUE;
+
+                    SFG_Window *activeWindow = fgStructure.CurrentWindow;
+                    INVOKE_WCB(*window, BeforeClose, (&doClose));
+                    fgSetWindow(activeWindow);
+
+                    if (!doClose)
+                        return TRUE;
+                }
+
+                break;
+            }
 
             case SC_VSCROLL    :
                 break ;

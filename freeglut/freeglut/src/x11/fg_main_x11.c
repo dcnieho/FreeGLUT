@@ -617,14 +617,25 @@ void fgPlatformProcessSingleEvent ( void )
             {
                 GETWINDOW( xclient );
 
-                fgDestroyWindow ( window );
-
-                if( fgState.ActionOnWindowClose == GLUT_ACTION_EXIT )
                 {
-                    fgDeinitialize( );
-                    exit( 0 );
+                    int doClose = GL_TRUE;
+
+                    SFG_Window *activeWindow = fgStructure.CurrentWindow;
+                    INVOKE_WCB(*window, BeforeClose, (&doClose));
+                    fgSetWindow(activeWindow);
+
+                    if (!doClose)
+                        return;
                 }
-                else if( fgState.ActionOnWindowClose == GLUT_ACTION_GLUTMAINLOOP_RETURNS )
+
+                fgDestroyWindow(window);
+
+                if (fgState.ActionOnWindowClose == GLUT_ACTION_EXIT)
+                {
+                    fgDeinitialize();
+                    exit(0);
+                }
+                else if (fgState.ActionOnWindowClose == GLUT_ACTION_GLUTMAINLOOP_RETURNS)
                     fgState.ExecState = GLUT_EXEC_STATE_STOP;
 
                 return;

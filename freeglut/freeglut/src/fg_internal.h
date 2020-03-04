@@ -270,6 +270,8 @@ typedef void (* FGCBTabletMotion    )( int, int );
 typedef void (* FGCBTabletMotionUC  )( int, int, FGCBUserData );
 typedef void (* FGCBTabletButton    )( int, int, int, int );
 typedef void (* FGCBTabletButtonUC  )( int, int, int, int, FGCBUserData );
+typedef void (* FGCBBeforeClose     )( int* );    /* Used for both window and menu destroy callbacks */
+typedef void (* FGCBBeforeCloseUC   )( FGCBUserData );
 typedef void (* FGCBDestroy         )( void );    /* Used for both window and menu destroy callbacks */
 typedef void (* FGCBDestroyUC       )( FGCBUserData );
 
@@ -703,6 +705,7 @@ enum
     WCB_Visibility,
     WCB_WindowStatus,
     WCB_Joystick,
+    WCB_BeforeClose,
     WCB_Destroy,
 
     /* Multi-Pointer X and touch related */

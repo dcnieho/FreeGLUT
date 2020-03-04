@@ -170,6 +170,7 @@
 #define EXPAND_WCB_SUB_ButtonBox(args) EXPAND_WCB_TWO args
 #define EXPAND_WCB_SUB_TabletMotion(args) EXPAND_WCB_TWO args
 #define EXPAND_WCB_SUB_TabletButton(args) EXPAND_WCB_FOUR args
+#define EXPAND_WCB_SUB_BeforeClose(args) EXPAND_WCB_ONE args
 #define EXPAND_WCB_SUB_Destroy(args) EXPAND_WCB_ZERO args
 #define EXPAND_WCB_SUB_MultiEntry(args) EXPAND_WCB_TWO args
 #define EXPAND_WCB_SUB_MultiButton(args) EXPAND_WCB_FIVE args

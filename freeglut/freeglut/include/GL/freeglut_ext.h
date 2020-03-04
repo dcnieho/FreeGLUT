@@ -161,6 +161,7 @@ FGAPI void    FGAPIENTRY glutSetMenuFont( int menuID, void* font );
  */
 FGAPI void    FGAPIENTRY glutMouseWheelFunc( void (* callback)( int, int, int, int ) );
 FGAPI void    FGAPIENTRY glutPositionFunc( void (* callback)( int, int ) );
+FGAPI void    FGAPIENTRY glutBeforeCloseFunc(void(* callback)(int*));
 FGAPI void    FGAPIENTRY glutCloseFunc( void (* callback)( void ) );
 FGAPI void    FGAPIENTRY glutWMCloseFunc( void (* callback)( void ) );
 /* And also a destruction callback for menus */
