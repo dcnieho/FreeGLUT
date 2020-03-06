@@ -111,7 +111,11 @@
 #else
 
 /* Non-Windows definition of FGAPI and FGAPIENTRY  */
+#    ifdef __GNUC__
+#        define FGAPI __attribute__((__visibility__("default")))
+#    else
 #        define FGAPI
+#    endif
 #        define FGAPIENTRY
 
 #endif

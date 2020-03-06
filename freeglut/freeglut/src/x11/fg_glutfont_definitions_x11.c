@@ -91,14 +91,14 @@ struct freeglutBitmapFont
 };
 
 
-struct freeglutStrokeFont glutStrokeRoman ;
-struct freeglutStrokeFont glutStrokeMonoRoman ;
+FGAPI struct freeglutStrokeFont glutStrokeRoman ;
+FGAPI struct freeglutStrokeFont glutStrokeMonoRoman ;
 
-struct freeglutBitmapFont glutBitmap9By15 ;
-struct freeglutBitmapFont glutBitmap8By13 ;
-struct freeglutBitmapFont glutBitmapTimesRoman10 ;
-struct freeglutBitmapFont glutBitmapTimesRoman24 ;
-struct freeglutBitmapFont glutBitmapHelvetica10 ;
-struct freeglutBitmapFont glutBitmapHelvetica12 ;
-struct freeglutBitmapFont glutBitmapHelvetica18 ;
+FGAPI struct freeglutBitmapFont glutBitmap9By15 ;
+FGAPI struct freeglutBitmapFont glutBitmap8By13 ;
+FGAPI struct freeglutBitmapFont glutBitmapTimesRoman10 ;
+FGAPI struct freeglutBitmapFont glutBitmapTimesRoman24 ;
+FGAPI struct freeglutBitmapFont glutBitmapHelvetica10 ;
+FGAPI struct freeglutBitmapFont glutBitmapHelvetica12 ;
+FGAPI struct freeglutBitmapFont glutBitmapHelvetica18 ;
 
