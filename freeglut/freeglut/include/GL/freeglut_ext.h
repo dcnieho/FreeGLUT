@@ -159,6 +159,7 @@ FGAPI void    FGAPIENTRY glutSetMenuFont( int menuID, void* font );
 /*
  * Window-specific callback functions, see fg_callbacks.c
  */
+FGAPI void    FGAPIENTRY glutKeyboardExtFunc( void (* callback)( int, int, int ) );
 FGAPI void    FGAPIENTRY glutMouseWheelFunc( void (* callback)( int, int, int, int ) );
 FGAPI void    FGAPIENTRY glutPositionFunc( void (* callback)( int, int ) );
 FGAPI void    FGAPIENTRY glutCloseFunc( void (* callback)( void ) );
@@ -176,6 +177,15 @@ FGAPI void*   FGAPIENTRY glutGetWindowData( void );
 FGAPI void    FGAPIENTRY glutSetWindowData(void* data);
 FGAPI void*   FGAPIENTRY glutGetMenuData( void );
 FGAPI void    FGAPIENTRY glutSetMenuData(void* data);
+
+/*
+ * Clipboard access
+ */
+#define GLUT_CLIPBOARD 0
+#define GLUT_PRIMARY 1
+#define GLUT_SECONDARY 2
+FGAPI void         FGAPIENTRY glutSetClipboard(int selection, const char *string);
+FGAPI const char * FGAPIENTRY glutGetClipboard(int selection);
 
 /*
  * Font stuff, see fg_font.c

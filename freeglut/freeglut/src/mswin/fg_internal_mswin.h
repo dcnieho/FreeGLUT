@@ -47,6 +47,13 @@
 
 #endif
 
+/* Define some constants that aren't in Visual Studio 2005 */
+#ifndef WM_MOUSEWHEEL
+#define WM_MOUSEWHEEL 0x020A
+#endif
+#ifndef WHEEL_DELTA
+#define WHEEL_DELTA 120
+#endif
 
 /* MinGW may lack a prototype for ChangeDisplaySettingsEx() (depending on the version?) */
 #if !defined(ChangeDisplaySettingsEx)

@@ -234,6 +234,10 @@ typedef void (* FGCBVisibility      )( int );
 typedef void (* FGCBVisibilityUC    )( int, FGCBUserData );
 typedef void (* FGCBKeyboard        )( unsigned char, int, int );
 typedef void (* FGCBKeyboardUC      )( unsigned char, int, int, FGCBUserData );
+typedef void (* FGCBKeyboardExt     )( int, int, int );
+typedef void (* FGCBKeyboardExtUC   )( int, int, int, FGCBUserData );
+typedef void (* FGCBKeyboardDown    )( unsigned char, int, int );
+typedef void (* FGCBKeyboardDownUC  )( unsigned char, int, int, FGCBUserData );
 typedef void (* FGCBKeyboardUp      )( unsigned char, int, int );
 typedef void (* FGCBKeyboardUpUC    )( unsigned char, int, int, FGCBUserData );
 typedef void (* FGCBSpecial         )( int, int, int );
@@ -692,6 +696,8 @@ enum
     WCB_Reshape,
     WCB_Position,
     WCB_Keyboard,
+    WCB_KeyboardExt,
+    WCB_KeyboardDown,
     WCB_KeyboardUp,
     WCB_Special,
     WCB_SpecialUp,
@@ -1160,6 +1166,9 @@ void fgError( const char *fmt, ... );
 void fgWarning( const char *fmt, ... );
 
 SFG_Proc fgPlatformGetProcAddress( const char *procName );
+
+void fgPlatformSetClipboard(int selection, const char *text);
+const char *fgPlatformGetClipboard(int selection);
 
 /* pushing attribute/value pairs into an array */
 #define ATTRIB(a) attributes[where++]=(a)

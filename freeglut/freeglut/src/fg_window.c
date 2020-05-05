@@ -382,6 +382,29 @@ void FGAPIENTRY glutSetIconTitle( const char* title )
 }
 
 /*
+ * This function sets the clipboard content to the UTF-8 encoded text.
+ */
+void FGAPIENTRY glutSetClipboard(int selection, const char *text)
+{
+    FREEGLUT_EXIT_IF_NOT_INITIALISED ( "glutSetClipboard" );
+    FREEGLUT_EXIT_IF_NO_WINDOW ( "glutSetClipboard" );
+
+    fgPlatformSetClipboard(selection, text);
+}
+
+/*
+ * This function returns the clipboard content as UTF-8 encoded text,
+ * or NULL if no content was available.
+ */
+const char* FGAPIENTRY glutGetClipboard(int selection)
+{
+    FREEGLUT_EXIT_IF_NOT_INITIALISED ( "glutGetClipboard" );
+    FREEGLUT_EXIT_IF_NO_WINDOW ( "glutGetClipboard" );
+
+    return fgPlatformGetClipboard(selection);
+}
+
+/*
  * Change the current window's size
  */
 void FGAPIENTRY glutReshapeWindow( int width, int height )

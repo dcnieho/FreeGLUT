@@ -28,6 +28,10 @@
 #include <GL/freeglut.h>
 #include "../fg_internal.h"
 
+#ifndef MAPVK_VK_TO_CHAR
+#define MAPVK_VK_TO_CHAR 2
+#endif
+
 extern void fghRedrawWindow ( SFG_Window *window );
 extern void fghRedrawWindowAndChildren ( SFG_Window *window );
 extern void fghOnReshapeNotify(SFG_Window *window, int width, int height, GLboolean forceNotify);
@@ -480,6 +484,81 @@ fg_time_t fgPlatformSystemTime ( void )
     return currTime32 | timeEpoch << 32;
 }
 
+extern char *fgClipboardBuffer[3];
+
+void fgPlatformSetClipboard(int selection, const char *text)
+{
+	if (selection == GLUT_PRIMARY)
+	{
+		free(fgClipboardBuffer[GLUT_PRIMARY]);
+		fgClipboardBuffer[GLUT_PRIMARY] = strdup(text);
+	}
+	else if (selection == GLUT_SECONDARY)
+	{
+		free(fgClipboardBuffer[GLUT_SECONDARY]);
+		fgClipboardBuffer[GLUT_SECONDARY] = strdup(text);
+	}
+	else if (selection == GLUT_CLIPBOARD && text)
+	{
+		int n = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
+		if (n > 0)
+		{
+			HANDLE object = GlobalAlloc(0, n * sizeof(WCHAR));
+			if (object)
+			{
+				WCHAR *wtext = GlobalLock(object);
+				if (wtext)
+				{
+					MultiByteToWideChar(CP_UTF8, 0, text, -1, wtext, n);
+					GlobalUnlock(object);
+					if (OpenClipboard(NULL))
+					{
+						EmptyClipboard();
+						SetClipboardData(CF_UNICODETEXT, object);
+						CloseClipboard();
+						object = NULL; /* it is now owned by the system */
+					}
+				}
+				GlobalFree(object);
+			}
+		}
+	}
+}
+
+const char *fgPlatformGetClipboard(int selection)
+{
+	if (selection == GLUT_PRIMARY)
+		return fgClipboardBuffer[GLUT_PRIMARY];
+	if (selection == GLUT_SECONDARY)
+		return fgClipboardBuffer[GLUT_SECONDARY];
+	if (selection == GLUT_CLIPBOARD)
+	{
+		free(fgClipboardBuffer[GLUT_CLIPBOARD]);
+		fgClipboardBuffer[GLUT_CLIPBOARD] = NULL;
+		if (OpenClipboard(NULL))
+		{
+			HANDLE object = GetClipboardData(CF_UNICODETEXT);
+			if (object)
+			{
+				WCHAR *wtext = GlobalLock(object);
+				if (wtext)
+				{
+					int n = WideCharToMultiByte(CP_UTF8, 0, wtext, -1, NULL, 0, NULL, NULL);
+					if (n > 0)
+					{
+						char *text = malloc(n);
+						fgClipboardBuffer[GLUT_CLIPBOARD] = text;
+						WideCharToMultiByte(CP_UTF8, 0, wtext, -1, text, n, NULL, NULL);
+					}
+					GlobalUnlock(object);
+				}
+			}
+			CloseClipboard();
+		}
+		return fgClipboardBuffer[GLUT_CLIPBOARD];
+	}
+	return NULL;
+}
 
 void fgPlatformSleepForEvents( fg_time_t msec )
 {
@@ -664,9 +743,17 @@ static LRESULT fghWindowProcKeyPress(SFG_Window *window, UINT uMsg, GLboolean ke
     case VK_DELETE:
         /* The delete key should be treated as an ASCII keypress: */
         if (keydown)
+        {
+            INVOKE_WCB( *window, KeyboardDown,
+                        ( 127, window->State.MouseX, window->State.MouseY )
+            );
+            INVOKE_WCB( *window, KeyboardExt,
+                        ( 127, window->State.MouseX, window->State.MouseY )
+            );
             INVOKE_WCB( *window, Keyboard,
                         ( 127, window->State.MouseX, window->State.MouseY )
             );
+        }
         else
             INVOKE_WCB( *window, KeyboardUp,
                         ( 127, window->State.MouseX, window->State.MouseY )
@@ -675,21 +762,19 @@ static LRESULT fghWindowProcKeyPress(SFG_Window *window, UINT uMsg, GLboolean ke
 
 #if !defined(_WIN32_WCE)
     default:
-        /* keydown displayable characters are handled with WM_CHAR message, but no corresponding up is generated. So get that here. */
-        if (!keydown)
+        /* Mapped characters are handled with the WM_CHAR message. Handle low-level ASCII press/release callbacks here. */
         {
-            BYTE state[ 256 ];
-            WORD code[ 2 ];
-
-            GetKeyboardState( state );
-
-            if( ToAscii( (UINT)wParam, 0, state, code, 0 ) == 1 )
-                wParam=code[ 0 ];
-
-            INVOKE_WCB( *window, KeyboardUp,
-                   ( (char)(wParam & 0xFF), /* and with 0xFF to indicate to runtime that we want to strip out higher bits - otherwise we get a runtime error when "Smaller Type Checks" is enabled */
-                        window->State.MouseX, window->State.MouseY )
-            );
+            UINT ascii = (UINT)MapVirtualKey((UINT)wParam, MAPVK_VK_TO_CHAR);
+	    if (ascii >= 32 && ascii < 256)
+            {
+                /* Always send lowercase (unshifted) values */
+                if (ascii >= 'A' && ascii <= 'Z')
+                    ascii = ascii - 'A' + 'a';
+                if (keydown)
+                    INVOKE_WCB(*window, KeyboardDown, ((unsigned char)ascii, window->State.MouseX, window->State.MouseY) );
+                else
+                    INVOKE_WCB(*window, KeyboardUp, ((unsigned char)ascii, window->State.MouseX, window->State.MouseY) );
+            }
         }
 #endif
     }
@@ -1023,6 +1108,7 @@ LRESULT CALLBACK fgPlatformWindowProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
         break;
 #endif
 
+#if _MSC_VER > 1400
     case WM_SETCURSOR:
 /*      printf ( "Cursor event %x %x %x %x\n", window, window->State.Cursor, lParam, wParam ) ; */
         if( LOWORD( lParam ) == HTCLIENT )
@@ -1057,6 +1143,7 @@ LRESULT CALLBACK fgPlatformWindowProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
             /* Only pass non-client WM_SETCURSOR to DefWindowProc, or we get WM_SETCURSOR on parents of children as well */
             lRet = DefWindowProc( hWnd, uMsg, wParam, lParam );
         break;
+#endif
 
     case WM_MOUSELEAVE:
         {
@@ -1375,10 +1462,13 @@ LRESULT CALLBACK fgPlatformWindowProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
             break;
 
         fgState.Modifiers = fgPlatformGetModifiers( );
-        INVOKE_WCB( *window, Keyboard,
-                    ( (char)wParam,
-                      window->State.MouseX, window->State.MouseY )
+        INVOKE_WCB( *window, KeyboardExt,
+                ( (int)wParam, window->State.MouseX, window->State.MouseY )
         );
+        if (wParam < 256)
+            INVOKE_WCB( *window, Keyboard,
+                    ( (unsigned char)wParam, window->State.MouseX, window->State.MouseY )
+            );
         fgState.Modifiers = INVALID_MODIFIERS;
     }
     break;

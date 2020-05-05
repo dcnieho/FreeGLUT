@@ -63,6 +63,8 @@ struct tagSFG_PlatformDisplay
     int             NetWMSupported;     /* Flag for EWMH Window Managers     */
     Atom            NetWMPid;           /* The _NET_WM_PID atom              */
     Atom            ClientMachine;      /* The client machine name atom      */
+    XIM             IM;                 /* The input method                  */
+    XIMStyle        InputStyle;         /* The input method style            */
 
 #ifdef HAVE_X11_EXTENSIONS_XRANDR_H
     int prev_xsz, prev_ysz;
@@ -107,6 +109,7 @@ struct tagSFG_PlatformContext
 #else
     GLXFBConfig    FBConfig;        /* The window's FBConfig               */
 #endif
+    XIC IC;                         /* The window's input context          */
 };
 
 

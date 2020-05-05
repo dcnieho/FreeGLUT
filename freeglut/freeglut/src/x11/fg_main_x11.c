@@ -29,8 +29,8 @@
 #include <GL/freeglut.h>
 #include "../fg_internal.h"
 #include <errno.h>
+#include <limits.h>
 #include <stdarg.h>
-
 
 /*
  * Try to get the maximum value allowed for ints, falling back to the minimum
@@ -579,6 +579,285 @@ __fg_unused static void fghPrintEvent( XEvent *event )
     }
 }
 
+/* UTF-8 decoding routine */
+enum
+{
+    Runeerror = 0xFFFD, /* decoding error in UTF */
+
+    Bit1 = 7,
+    Bitx = 6,
+    Bit2 = 5,
+    Bit3 = 4,
+    Bit4 = 3,
+    Bit5 = 2,
+
+    T1 = ((1<<(Bit1+1))-1) ^ 0xFF, /* 0000 0000 */
+    Tx = ((1<<(Bitx+1))-1) ^ 0xFF, /* 1000 0000 */
+    T2 = ((1<<(Bit2+1))-1) ^ 0xFF, /* 1100 0000 */
+    T3 = ((1<<(Bit3+1))-1) ^ 0xFF, /* 1110 0000 */
+    T4 = ((1<<(Bit4+1))-1) ^ 0xFF, /* 1111 0000 */
+    T5 = ((1<<(Bit5+1))-1) ^ 0xFF, /* 1111 1000 */
+
+    Rune1 = (1<<(Bit1+0*Bitx))-1, /* 0000 0000 0111 1111 */
+    Rune2 = (1<<(Bit2+1*Bitx))-1, /* 0000 0111 1111 1111 */
+    Rune3 = (1<<(Bit3+2*Bitx))-1, /* 1111 1111 1111 1111 */
+    Rune4 = (1<<(Bit4+3*Bitx))-1, /* 0001 1111 1111 1111 1111 1111 */
+
+    Maskx = (1<<Bitx)-1,	/* 0011 1111 */
+    Testx = Maskx ^ 0xFF,	/* 1100 0000 */
+
+    Bad = Runeerror,
+};
+
+static int chartorune(int *rune, const char *str)
+{
+    int c, c1, c2, c3;
+    int l;
+
+    /*
+     * one character sequence
+     *	00000-0007F => T1
+     */
+    c = *(const unsigned char*)str;
+    if(c < Tx) {
+        *rune = c;
+        return 1;
+    }
+
+    /*
+     * two character sequence
+     *	0080-07FF => T2 Tx
+     */
+    c1 = *(const unsigned char*)(str+1) ^ Tx;
+    if(c1 & Testx)
+        goto bad;
+    if(c < T3) {
+        if(c < T2)
+            goto bad;
+        l = ((c << Bitx) | c1) & Rune2;
+        if(l <= Rune1)
+            goto bad;
+        *rune = l;
+        return 2;
+    }
+
+    /*
+     * three character sequence
+     *	0800-FFFF => T3 Tx Tx
+     */
+    c2 = *(const unsigned char*)(str+2) ^ Tx;
+    if(c2 & Testx)
+        goto bad;
+    if(c < T4) {
+        l = ((((c << Bitx) | c1) << Bitx) | c2) & Rune3;
+        if(l <= Rune2)
+            goto bad;
+        *rune = l;
+        return 3;
+    }
+
+    /*
+     * four character sequence (21-bit value)
+     *	10000-1FFFFF => T4 Tx Tx Tx
+     */
+    c3 = *(const unsigned char*)(str+3) ^ Tx;
+    if (c3 & Testx)
+        goto bad;
+    if (c < T5) {
+        l = ((((((c << Bitx) | c1) << Bitx) | c2) << Bitx) | c3) & Rune4;
+        if (l <= Rune3)
+            goto bad;
+        *rune = l;
+        return 4;
+    }
+    /*
+     * Support for 5-byte or longer UTF-8 would go here, but
+     * since we don't have that, we'll just fall through to bad.
+     */
+
+    /*
+     * bad decoding
+     */
+bad:
+    *rune = Bad;
+    return 1;
+}
+
+extern char *fgClipboardBuffer[3];
+
+static Atom fghGetAtom(const char *name)
+{
+    return XInternAtom(fgDisplay.pDisplay.Display, name, False);
+}
+
+static void fgHandleSelectionNotify(XEvent *event)
+{
+    Display *dpy = fgDisplay.pDisplay.Display;
+    Atom actual_type;
+    int actual_format;
+    unsigned long item_count;
+    unsigned long bytes_after;
+    unsigned char *prop;
+
+    if (event->xselection.property == None)
+    {
+        fgWarning("Couldn't convert selection to UTF-8 string.");
+        return;
+    }
+
+    XGetWindowProperty(dpy, event->xselection.requestor, event->xselection.property,
+            0, LONG_MAX, True, AnyPropertyType,
+            &actual_type, &actual_format, &item_count, &bytes_after, &prop);
+
+    if (actual_type == fghGetAtom("UTF8_STRING"))
+    {
+        if (event->xselection.selection == fghGetAtom("CLIPBOARD"))
+        {
+            free(fgClipboardBuffer[GLUT_CLIPBOARD]);
+            fgClipboardBuffer[GLUT_CLIPBOARD] = strdup((char*)prop);
+        }
+        if (event->xselection.selection == XA_PRIMARY)
+        {
+            free(fgClipboardBuffer[GLUT_PRIMARY]);
+            fgClipboardBuffer[GLUT_PRIMARY] = strdup((char*)prop);
+        }
+        if (event->xselection.selection == XA_SECONDARY)
+        {
+            free(fgClipboardBuffer[GLUT_SECONDARY]);
+            fgClipboardBuffer[GLUT_SECONDARY] = strdup((char*)prop);
+        }
+    }
+
+    XFree(prop);
+}
+
+static void fgHandleSelectionClear(XEvent *event)
+{
+    if (event->xselectionclear.selection == fghGetAtom("CLIPBOARD"))
+    {
+        free(fgClipboardBuffer[GLUT_CLIPBOARD]);
+        fgClipboardBuffer[GLUT_CLIPBOARD] = NULL;
+    }
+    else if (event->xselectionclear.selection == XA_PRIMARY)
+    {
+        free(fgClipboardBuffer[GLUT_PRIMARY]);
+        fgClipboardBuffer[GLUT_PRIMARY] = NULL;
+    }
+    else if (event->xselectionclear.selection == XA_SECONDARY)
+    {
+        free(fgClipboardBuffer[GLUT_SECONDARY]);
+        fgClipboardBuffer[GLUT_SECONDARY] = NULL;
+    }
+}
+
+static void fgHandleSelectionRequest(XEvent *event)
+{
+    Display *dpy = fgDisplay.pDisplay.Display;
+    Window requestor = event->xselectionrequest.requestor;
+    Atom selection = event->xselectionrequest.selection;
+    Atom target = event->xselectionrequest.target;
+    Atom property = event->xselectionrequest.property;
+    Atom time = event->xselectionrequest.time;
+    XEvent response;
+    char *text;
+
+    if (property == None)
+        property = target;
+
+    response.xselection.type = SelectionNotify;
+    response.xselection.send_event = True;
+    response.xselection.display = dpy;
+    response.xselection.requestor = requestor;
+    response.xselection.selection = selection;
+    response.xselection.target = target;
+    response.xselection.property = property;
+    response.xselection.time = time;
+
+    if (selection == fghGetAtom("CLIPBOARD"))
+        text = fgClipboardBuffer[GLUT_CLIPBOARD];
+    else if (selection == XA_PRIMARY)
+        text = fgClipboardBuffer[GLUT_PRIMARY];
+    else if (selection == XA_SECONDARY)
+        text = fgClipboardBuffer[GLUT_SECONDARY];
+    else
+        return;
+    if (!text)
+        return;
+
+    if (target == fghGetAtom("TARGETS"))
+    {
+        Atom list[4] = {
+            fghGetAtom("TARGETS"),
+            fghGetAtom("TIMESTAMP"),
+            XA_STRING,
+            fghGetAtom("UTF8_STRING")
+        };
+        XChangeProperty(dpy, requestor, property, target,
+                32, PropModeReplace, (unsigned char *)list, sizeof(list)/sizeof(Atom));
+    }
+    else if (target == XA_STRING || target == fghGetAtom("UTF8_STRING"))
+    {
+        XChangeProperty(dpy, requestor, property, target,
+                8, PropModeReplace, (unsigned char *)text, strlen(text));
+    }
+
+    XSendEvent(dpy, requestor, False, 0, &response);
+}
+
+void fgPlatformSetClipboard(int selection, const char *text)
+{
+    Display *dpy = fgDisplay.pDisplay.Display;
+    Window window = fgStructure.CurrentWindow->Window.Handle;
+    Atom xselection;
+    if (selection == GLUT_CLIPBOARD)
+        xselection = fghGetAtom("CLIPBOARD");
+    else if (selection == GLUT_PRIMARY)
+        xselection = XA_PRIMARY;
+    else if (selection == GLUT_SECONDARY)
+        xselection = XA_SECONDARY;
+    else
+        return;
+
+    free(fgClipboardBuffer[selection]);
+    fgClipboardBuffer[selection] = strdup(text);
+
+    XSetSelectionOwner(dpy, xselection, window, CurrentTime);
+}
+
+static Bool isSelectionNotify(Display *dpi, XEvent *event, XPointer arg)
+{
+    return (event->type == SelectionNotify);
+}
+
+const char *fgPlatformGetClipboard(int selection)
+{
+    Display *dpy = fgDisplay.pDisplay.Display;
+    Window window = fgStructure.CurrentWindow->Window.Handle;
+    Atom xselection;
+    Window owner;
+    XEvent event;
+
+    if (selection == GLUT_CLIPBOARD)
+        xselection = fghGetAtom("CLIPBOARD");
+    else if (selection == GLUT_PRIMARY)
+        xselection = XA_PRIMARY;
+    else if (selection == GLUT_SECONDARY)
+        xselection = XA_SECONDARY;
+    else
+        return NULL;
+
+    owner = XGetSelectionOwner(dpy, xselection);
+    if (!owner)
+        return NULL;
+    if (owner != window)
+    {
+        XConvertSelection(dpy, xselection, fghGetAtom("UTF8_STRING"), xselection, window, CurrentTime);
+        XIfEvent(dpy, &event, isSelectionNotify, NULL);
+        fgHandleSelectionNotify(&event);
+    }
+
+    return fgClipboardBuffer[selection];
+}
 
 void fgPlatformProcessSingleEvent ( void )
 {
@@ -603,6 +882,8 @@ void fgPlatformProcessSingleEvent ( void )
 #if _DEBUG
         fghPrintEvent( &event );
 #endif
+	if (XFilterEvent(&event, None))
+		continue;
 
         switch( event.type )
         {
@@ -629,6 +910,16 @@ void fgPlatformProcessSingleEvent ( void )
 
                 return;
             }
+            break;
+
+        case SelectionClear:
+            fgHandleSelectionClear(&event);
+            break;
+        case SelectionRequest:
+            fgHandleSelectionRequest(&event);
+            break;
+        case SelectionNotify:
+            fgHandleSelectionNotify(&event);
             break;
 
             /*
@@ -874,8 +1165,12 @@ void fgPlatformProcessSingleEvent ( void )
         case KeyRelease:
         case KeyPress:
         {
+            FGCBKeyboardExtUC keyboard_ext_cb;
+            FGCBKeyboardUC keyboard_low_cb;
             FGCBKeyboardUC keyboard_cb;
             FGCBSpecialUC special_cb;
+            FGCBUserData keyboard_ext_ud;
+            FGCBUserData keyboard_low_ud;
             FGCBUserData keyboard_ud;
             FGCBUserData special_ud;
 
@@ -918,113 +1213,158 @@ void fgPlatformProcessSingleEvent ( void )
 
             if( event.type == KeyPress )
             {
+                keyboard_ext_cb = (FGCBKeyboardExtUC)( FETCH_WCB( *window, KeyboardExt ));
+                keyboard_low_cb = (FGCBKeyboardUC)( FETCH_WCB( *window, KeyboardDown ));
                 keyboard_cb = (FGCBKeyboardUC)( FETCH_WCB( *window, Keyboard ));
                 special_cb  = (FGCBSpecialUC) ( FETCH_WCB( *window, Special  ));
+                keyboard_ext_ud = FETCH_USER_DATA_WCB( *window, KeyboardExt );
+                keyboard_low_ud = FETCH_USER_DATA_WCB( *window, KeyboardDown );
                 keyboard_ud = FETCH_USER_DATA_WCB( *window, Keyboard );
                 special_ud  = FETCH_USER_DATA_WCB( *window, Special  );
             }
             else
             {
-                keyboard_cb = (FGCBKeyboardUC)( FETCH_WCB( *window, KeyboardUp ));
+                keyboard_ext_cb = NULL;
+                keyboard_low_cb = (FGCBKeyboardUC)( FETCH_WCB( *window, KeyboardUp ));
+		keyboard_cb = NULL;
                 special_cb  = (FGCBSpecialUC) ( FETCH_WCB( *window, SpecialUp  ));
-                keyboard_ud = FETCH_USER_DATA_WCB( *window, KeyboardUp );
+                keyboard_ext_ud = NULL;
+                keyboard_low_ud = FETCH_USER_DATA_WCB( *window, KeyboardUp );
+		keyboard_ud = NULL;
                 special_ud  = FETCH_USER_DATA_WCB( *window, SpecialUp  );
             }
 
-            /* Is there a keyboard/special callback hooked for this window? */
-            if( keyboard_cb || special_cb )
+
+            /* Is there a character keyboard callback hooked for this window? */
+            if (keyboard_ext_cb || keyboard_cb)
             {
-                XComposeStatus composeStatus;
-                char asciiCode[ 32 ];
+                static XComposeStatus composeStatus = { 0 }; /* keep state across invocations */
+                XIC ic = window->Window.pContext.IC;
+                Status status;
+                char buf[32], *utf8 = buf;
                 KeySym keySym;
-                int len;
+                int i, c, len;
 
-                /* Check for the ASCII/KeySym codes associated with the event: */
-                len = XLookupString( &event.xkey, asciiCode, sizeof(asciiCode),
-                                     &keySym, &composeStatus
-                );
-
-                /* GLUT API tells us to have two separate callbacks... */
-                if( len > 0 )
+                /* Check for the Unicode text associated with the event: */
+                if (ic)
                 {
-                    /* ...one for the ASCII translateable keypresses... */
-                    if( keyboard_cb )
+                    len = Xutf8LookupString(ic, &event.xkey, buf, sizeof buf, &keySym, &status);
+                    if (status == XBufferOverflow)
                     {
-                        fgSetWindow( window );
-                        fgState.Modifiers = fgPlatformGetModifiers( event.xkey.state );
-                        keyboard_cb( asciiCode[ 0 ],
-                                     event.xkey.x, event.xkey.y,
-                                     keyboard_ud
-                        );
-                        fgState.Modifiers = INVALID_MODIFIERS;
+                        utf8 = malloc(len);
+                        len = Xutf8LookupString(ic, &event.xkey, utf8, len, &keySym, &status);
                     }
                 }
                 else
                 {
-                    int special = -1;
+                    len = XLookupString(&event.xkey, buf, sizeof buf, &keySym, &composeStatus);
+                }
 
-                    /*
-                     * ...and one for all the others, which need to be
-                     * translated to GLUT_KEY_Xs...
-                     */
-                    switch( keySym )
+                if (len > 0)
+                {
+                    fgSetWindow(window);
+                    fgState.Modifiers = fgPlatformGetModifiers(event.xkey.state);
+
+                    i = 0;
+                    while (i < len)
                     {
-                    case XK_F1:     special = GLUT_KEY_F1;     break;
-                    case XK_F2:     special = GLUT_KEY_F2;     break;
-                    case XK_F3:     special = GLUT_KEY_F3;     break;
-                    case XK_F4:     special = GLUT_KEY_F4;     break;
-                    case XK_F5:     special = GLUT_KEY_F5;     break;
-                    case XK_F6:     special = GLUT_KEY_F6;     break;
-                    case XK_F7:     special = GLUT_KEY_F7;     break;
-                    case XK_F8:     special = GLUT_KEY_F8;     break;
-                    case XK_F9:     special = GLUT_KEY_F9;     break;
-                    case XK_F10:    special = GLUT_KEY_F10;    break;
-                    case XK_F11:    special = GLUT_KEY_F11;    break;
-                    case XK_F12:    special = GLUT_KEY_F12;    break;
+                        i += chartorune(&c, utf8 + i);
 
-                    case XK_KP_Left:
-                    case XK_Left:   special = GLUT_KEY_LEFT;   break;
-                    case XK_KP_Right:
-                    case XK_Right:  special = GLUT_KEY_RIGHT;  break;
-                    case XK_KP_Up:
-                    case XK_Up:     special = GLUT_KEY_UP;     break;
-                    case XK_KP_Down:
-                    case XK_Down:   special = GLUT_KEY_DOWN;   break;
+                        /* ...for the Unicode translateable keypresses... */
+                        if (keyboard_ext_cb)
+                            keyboard_ext_cb(c, event.xkey.x, event.xkey.y, keyboard_ext_ud);
 
-                    case XK_KP_Prior:
-                    case XK_Prior:  special = GLUT_KEY_PAGE_UP; break;
-                    case XK_KP_Next:
-                    case XK_Next:   special = GLUT_KEY_PAGE_DOWN; break;
-                    case XK_KP_Home:
-                    case XK_Home:   special = GLUT_KEY_HOME;   break;
-                    case XK_KP_End:
-                    case XK_End:    special = GLUT_KEY_END;    break;
-                    case XK_KP_Insert:
-                    case XK_Insert: special = GLUT_KEY_INSERT; break;
-
-                    case XK_Num_Lock :  special = GLUT_KEY_NUM_LOCK;  break;
-                    case XK_KP_Begin :  special = GLUT_KEY_BEGIN;     break;
-                    case XK_KP_Delete:  special = GLUT_KEY_DELETE;    break;
-
-                    case XK_Shift_L:   special = GLUT_KEY_SHIFT_L;    break;
-                    case XK_Shift_R:   special = GLUT_KEY_SHIFT_R;    break;
-                    case XK_Control_L: special = GLUT_KEY_CTRL_L;     break;
-                    case XK_Control_R: special = GLUT_KEY_CTRL_R;     break;
-                    case XK_Alt_L:     special = GLUT_KEY_ALT_L;      break;
-                    case XK_Alt_R:     special = GLUT_KEY_ALT_R;      break;
+                        /* ...for the Latin-1 translateable keypresses... */
+                        if (keyboard_cb)
+                            if (c < 256)
+                                keyboard_cb(c, event.xkey.x, event.xkey.y, keyboard_ud);
                     }
 
-                    /*
-                     * Execute the callback (if one has been specified),
-                     * given that the special code seems to be valid...
-                     */
-                    if( special_cb && (special != -1) )
-                    {
-                        fgSetWindow( window );
-                        fgState.Modifiers = fgPlatformGetModifiers( event.xkey.state );
-                        special_cb( special, event.xkey.x, event.xkey.y, special_ud );
-                        fgState.Modifiers = INVALID_MODIFIERS;
-                    }
+                    fgState.Modifiers = INVALID_MODIFIERS;
+                }
+
+                if (utf8 != buf)
+                    free(utf8);
+            }
+
+            if (keyboard_low_cb || special_cb)
+            {
+                int special = -1;
+                int ascii = 0;
+
+                KeySym keySym = XLookupKeysym(&event.xkey, 0);
+
+                /* ...for low-level keys, which need to be
+                 * translated to GLUT_KEY_Xs or ASCII values...
+                 */
+                switch( keySym )
+                {
+                case XK_F1:     special = GLUT_KEY_F1;     break;
+                case XK_F2:     special = GLUT_KEY_F2;     break;
+                case XK_F3:     special = GLUT_KEY_F3;     break;
+                case XK_F4:     special = GLUT_KEY_F4;     break;
+                case XK_F5:     special = GLUT_KEY_F5;     break;
+                case XK_F6:     special = GLUT_KEY_F6;     break;
+                case XK_F7:     special = GLUT_KEY_F7;     break;
+                case XK_F8:     special = GLUT_KEY_F8;     break;
+                case XK_F9:     special = GLUT_KEY_F9;     break;
+                case XK_F10:    special = GLUT_KEY_F10;    break;
+                case XK_F11:    special = GLUT_KEY_F11;    break;
+                case XK_F12:    special = GLUT_KEY_F12;    break;
+
+                case XK_KP_Left:
+                case XK_Left:   special = GLUT_KEY_LEFT;   break;
+                case XK_KP_Right:
+                case XK_Right:  special = GLUT_KEY_RIGHT;  break;
+                case XK_KP_Up:
+                case XK_Up:     special = GLUT_KEY_UP;     break;
+                case XK_KP_Down:
+                case XK_Down:   special = GLUT_KEY_DOWN;   break;
+
+                case XK_KP_Prior:
+                case XK_Prior:  special = GLUT_KEY_PAGE_UP; break;
+                case XK_KP_Next:
+                case XK_Next:   special = GLUT_KEY_PAGE_DOWN; break;
+                case XK_KP_Home:
+                case XK_Home:   special = GLUT_KEY_HOME;   break;
+                case XK_KP_End:
+                case XK_End:    special = GLUT_KEY_END;    break;
+                case XK_KP_Insert:
+                case XK_Insert: special = GLUT_KEY_INSERT; break;
+
+                case XK_Num_Lock :  special = GLUT_KEY_NUM_LOCK;  break;
+                case XK_KP_Begin :  special = GLUT_KEY_BEGIN;     break;
+                case XK_KP_Delete:  special = GLUT_KEY_DELETE;    break;
+
+                case XK_Shift_L:   special = GLUT_KEY_SHIFT_L;    break;
+                case XK_Shift_R:   special = GLUT_KEY_SHIFT_R;    break;
+                case XK_Control_L: special = GLUT_KEY_CTRL_L;     break;
+                case XK_Control_R: special = GLUT_KEY_CTRL_R;     break;
+                case XK_Alt_L:     special = GLUT_KEY_ALT_L;      break;
+                case XK_Alt_R:     special = GLUT_KEY_ALT_R;      break;
+                default:
+                    if( keySym >= XK_space && keySym <= XK_ydiaeresis )
+                        ascii = keySym - XK_space + ' ';
+                    break;
+                }
+
+                /*
+                 * Execute the callback (if one has been specified),
+                 * given that the special code seems to be valid...
+                 */
+                if( special_cb && (special != -1) )
+                {
+                    fgSetWindow( window );
+                    fgState.Modifiers = fgPlatformGetModifiers( event.xkey.state );
+                    special_cb( special, event.xkey.x, event.xkey.y, special_ud );
+                    fgState.Modifiers = INVALID_MODIFIERS;
+                }
+                else if( keyboard_low_cb && (ascii >= 32 && ascii < 256) )
+                {
+                    fgSetWindow( window );
+                    fgState.Modifiers = fgPlatformGetModifiers( event.xkey.state );
+                    keyboard_low_cb( ascii, event.xkey.x, event.xkey.y, keyboard_low_ud );
+                    fgState.Modifiers = INVALID_MODIFIERS;
                 }
             }
         }

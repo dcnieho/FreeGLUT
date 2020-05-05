@@ -36,6 +36,8 @@ extern LRESULT CALLBACK fgPlatformWindowProc( HWND hWnd, UINT uMsg,
 extern void fgPlatformInitSystemTime();
 extern void fghCloseInputDevices(void);
 
+char *fgClipboardBuffer[3] = { NULL, NULL, NULL };
+
 
 /*
  * A call to this function should initialize all the display stuff...
@@ -150,10 +152,18 @@ void fgPlatformDeinitialiseInputDevices ( void )
 
 void fgPlatformCloseDisplay ( void )
 {
+    int i;
+
     if( fgDisplay.pDisplay.DisplayName )
     {
         free( fgDisplay.pDisplay.DisplayName );
         fgDisplay.pDisplay.DisplayName = NULL;
+    }
+
+    for (i = 0; i < 3; ++i)
+    {
+        free(fgClipboardBuffer[i]);
+        fgClipboardBuffer[i] = NULL;
     }
 
     /* Reset the timer granularity */
