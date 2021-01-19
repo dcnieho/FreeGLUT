@@ -129,8 +129,9 @@ struct tagSFG_PlatformJoystick
 
 /* -- PRIVATE FUNCTION DECLARATIONS ---------------------------------------- */
 /* Spaceball device functions, defined in fg_spaceball_mswin.c */
-//Added by Jinrong Xie <stonexjr at gmail.com> 12/24/2014
-int  fgIsSpaceballWinEvent(HWND hwnd, WPARAM wParam, LPARAM lParam);
+/* Added by Jinrong Xie <stonexjr at gmail.com> 12/24/2014 */
+/* Modified by Shane Saxon. Dec 2020 */
+void fgSpaceballDeviceChangeWinEvent(HWND hwnd, WPARAM wParam, LPARAM lParam);
 void fgSpaceballHandleWinEvent(HWND hwnd, WPARAM wParam, LPARAM lParam);
 
 /* Function to be called on exit */
