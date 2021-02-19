@@ -254,6 +254,28 @@ IF(FREEGLUT_GLES OR FREEGLUT_WAYLAND)
     )
 ENDIF()
 
+INCLUDE(CheckIncludeFiles)
+IF(UNIX AND NOT(ANDROID OR BLACKBERRY OR FREEGLUT_WAYLAND))
+    FIND_PACKAGE(X11 REQUIRED)
+    INCLUDE_DIRECTORIES(${X11_X11_INCLUDE_PATH})
+    LIST(APPEND LIBS ${X11_X11_LIB})
+    IF(X11_Xrandr_FOUND)
+        SET(HAVE_X11_EXTENSIONS_XRANDR_H TRUE)
+        LIST(APPEND LIBS ${X11_Xrandr_LIB})
+    ENDIF()
+    IF(X11_xf86vmode_FOUND)
+        SET(HAVE_X11_EXTENSIONS_XF86VMODE_H TRUE)
+        LIST(APPEND LIBS ${X11_Xxf86vm_LIB})
+    ENDIF()
+    IF(X11_Xinput_FOUND)
+        # Needed for multi-touch:
+        CHECK_INCLUDE_FILES("${X11_Xinput_INCLUDE_PATH}/X11/extensions/XInput2.h" HAVE_X11_EXTENSIONS_XINPUT2_H)
+        LIST(APPEND LIBS ${X11_Xinput_LIB})
+    ELSE()
+        MESSAGE(FATAL_ERROR "Missing X11's XInput2.h (X11/extensions/XInput2.h)")
+    ENDIF()
+ENDIF()
+
 # For OpenGL ES (GLES): compile with -DFREEGLUT_GLES to cleanly
 # bootstrap headers inclusion in freeglut_std.h; this constant also
 # need to be defined in client applications (e.g. through pkg-config),
@@ -263,9 +285,19 @@ IF(FREEGLUT_GLES)
     LIST(APPEND PUBLIC_DEFINITIONS -DFREEGLUT_GLES)
     LIST(APPEND LIBS GLESv2 GLESv1_CM EGL)
 ELSE()
-  FIND_PACKAGE(OpenGL REQUIRED)
-  LIST(APPEND LIBS ${OPENGL_gl_LIBRARY})
-  INCLUDE_DIRECTORIES(${OPENGL_INCLUDE_DIR})
+    # On OS X, we need to link against the X11 OpenGL libraries, NOT the Cocoa OpenGL libraries.
+    # To do that, you need to manually find two of the libraries before calling FindOpenGL
+    if("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
+      # get path where X11 libs are
+      get_filename_component(X11_LIB_PATH ${X11_Xi_LIB} DIRECTORY)
+      
+      find_library(OPENGL_gl_LIBRARY NAME GL HINTS ${X11_LIB_PATH})
+      find_library(OPENGL_glu_LIBRARY NAME GLU HINTS ${X11_LIB_PATH})
+    endif()
+
+    FIND_PACKAGE(OpenGL REQUIRED)
+    LIST(APPEND LIBS ${OPENGL_gl_LIBRARY})
+    INCLUDE_DIRECTORIES(${OPENGL_INCLUDE_DIR})
 ENDIF()
 
 # For Wayland: compile with -DFREEGLUT_WAYLAND and pull EGL
@@ -313,27 +345,6 @@ IF(CMAKE_COMPILER_IS_GNUCC)
   ENDIF()
 ENDIF(CMAKE_COMPILER_IS_GNUCC)
 
-INCLUDE(CheckIncludeFiles)
-IF(UNIX AND NOT(ANDROID OR BLACKBERRY OR FREEGLUT_WAYLAND))
-    FIND_PACKAGE(X11 REQUIRED)
-    INCLUDE_DIRECTORIES(${X11_X11_INCLUDE_PATH})
-    LIST(APPEND LIBS ${X11_X11_LIB})
-    IF(X11_Xrandr_FOUND)
-        SET(HAVE_X11_EXTENSIONS_XRANDR_H TRUE)
-        LIST(APPEND LIBS ${X11_Xrandr_LIB})
-    ENDIF()
-    IF(X11_xf86vmode_FOUND)
-        SET(HAVE_X11_EXTENSIONS_XF86VMODE_H TRUE)
-        LIST(APPEND LIBS ${X11_Xxf86vm_LIB})
-    ENDIF()
-    IF(X11_Xinput_FOUND)
-        # Needed for multi-touch:
-        CHECK_INCLUDE_FILES("${X11_Xinput_INCLUDE_PATH}/X11/extensions/XInput2.h" HAVE_X11_EXTENSIONS_XINPUT2_H)
-        LIST(APPEND LIBS ${X11_Xinput_LIB})
-    ELSE()
-        MESSAGE(FATAL_ERROR "Missing X11's XInput.h (X11/extensions/XInput.h)")
-    ENDIF()
-ENDIF()
 IF(ANDROID)
     # -landroid for ANativeWindow
     # -llog for native Android logging
